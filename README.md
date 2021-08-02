@@ -209,7 +209,9 @@ form don't add up. So I guess this must be the missing email address. The string
 is encoded and the decoding algorithm can be found in the lulz class (also xors
 exactly the same way the EXE was encoded in the challenge exe, but with
 different xor strings). I wrote the decoder in Python (challenge7b.py) to get
-the email address from the encoded string 'da7.f1are.finish.lin3@flare-on.com'
-from the main form. In the lulz class there were other strings that were decoded
-but it didn't mean anything. There was another email address but from reading 
-the solutions, that email address is a bogus one.
+the email address 'da7.f1are.finish.lin3@flare-on.com' from the encoded string 
+found from the main form. The strings are encoded in unicode and other escape
+strings, but it's easy to find the meaning of the escape chars and translate
+them to Python strings. In the lulz class there were other strings that were 
+decoded but it didn't mean anything. There was another email address but from 
+reading the solutions, that email address is a bogus one.
