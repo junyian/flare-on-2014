@@ -1,20 +1,30 @@
 # flare-on-2014
 Solutions to Flare-on 2014 challenges
+Last updated: 3 Aug 2021
+
+This is meant to document my journey in completing the Flare-on 2014 Challenges.
+I left a lot of details out as I feel it would be more beneficial to go over the
+approach in solving the challenges, instead of explaining every little detail.
+The solutions from Flare-on's website does a much better job of doing that
+anyway. I admit that I also referred to the solutions after trying the
+challenges on my own and getting stuck. Overall, it's been a really rewarding
+learning journey. Maybe in the future I'll do a more in-depth study of the
+challenges.
 
 ## Challenge 1
 Exe file is a .NET executable that shows a picture upon startup. Clicking on 
-Decode button gives gibberish. Use dnSpy to explore the exe.
-The section to find is Form1.btnDecode_Click(). This loads Resources.dat_secret.
-Find that resource in dnSpy and save as file. Then runs some algorithm on the 
-data. Replicate that in Python (see challenge1.py). And we can find the string 
-"3rmahg3rd.b0b.d0ge@flare-on.com".
+Decode button gives gibberish. Use dnSpy to explore the EXE and find the code
+that's triggered upon clicking the button, which is Form1.btnDecode_Click().
+This loads Resources.dat_secret. Found that resource in dnSpy and save as file.
+Then notice some algorithm being executed on the data. Replicate that in Python
+(see challenge1.py) and we can resolve it to "3rmahg3rd.b0b.d0ge@flare-on.com".
 
 ## Challenge 2
 HTML file with a PNG file. Open PNG file in HxD and find the PHP code at the 
 end. Replicate that PHP code in Python (see challenge2.py). Iterate through the 
 base64 decodes, and the final one with POST variable is done manually with an 
 ASCII table. Final string is "a11DOTthatDOTjava5crapATflareDASHonDOTcom", which 
-translates to "a11.that.java5crap@flare-on.com"
+translates to "a11.that.java5crap@flare-on.com".
 
 ## Challenge 3
 No coding needed. Initial analysis of file in HxD shows a typical PE header, so 
@@ -50,7 +60,7 @@ see 'wa1ch.d3m.spl01ts@flare-on.com' written to stack.
 File is a DLL (without the extension). Loading it in IDA shows DllEntryPoint 
 which confirms it. IDA's debugger is not suitable here so I used x64dbg (well, 
 x32dbg actually since it's 32-bit) to launch the DLL. After a LOT of tracing, 
-inally found a piece of code that starts by calling GetAsyncKeyState to check
+finally found a piece of code that starts by calling GetAsyncKeyState to check
 what key is pressed. Then compares it to a huge switch table comparing the key 
 to special chars (backspace, enter, etc.), numbers (0-9), characters (a-z) and 
 symbols (dot, question mark, etc.). Each case calls a function for each char.
@@ -58,7 +68,7 @@ Looking into each function, some just gets the offset, others write some sort
 of flag into a global var. And there are many of it. I realize that this logs 
 the keys and setting a flag if the key is pressed. The code also resets other 
 flags not related to its char. So use IDA, check cross references, and determine
-which is the only function that sets the flag. Luckily, all the vars 
+which is the only function that sets the flag. Luckily, all the variables
 are arranged in a set order, so we can finally see the chars are arranged as 
 'l0gging.ur.5tr0ke5@flare-on.com'
 
@@ -136,3 +146,70 @@ to get back the correct string. After fumbling around with different methods,
 I finally decided to write the reverse in assembly (c6reverse.asm), and
 eventually get the string 'l1nhax.hurt.u5.a1l@flare-on.com'.
 
+## Challenge 7
+This challenge is very interesting, and brought me back to the time I was
+actively reversing (ahem ahem...) sharewares around 1998-2002. Some tricks are
+new to me as well so I learnt a great deal from this challenge. This challenge
+is generally to bypass the various anti-debugging, anti-VMs and some other
+trivial checks. Depending on whether the check passes or fails, the code will
+perform xors with different keys to a byte string. Then writes the byte string
+to an EXE file and try to execute it. If the checks are bypassed correctly, we
+get a working EXE file. Otherwise, the EXE is plain gibberish. Finally, figure
+out the email address from the EXE.
+
+After studying the disassembly and running it a few times with a debugger, we
+can easily find the start of the anti-debug/anti-VM checks. To overcome these, I
+patched the conditional jumps to force the flow that I want and allow the
+challenge to write the EXE to disk. The checks are in this specific order:
+1. Call to IsDebuggerPresent. This is from kernel32.dll, which checks the PEB
+structure.
+2. Checks the PEB structure for IsDebug to detect debugger. Basically emulating
+IsDebuggerPresent.
+3. VM check using Interrupt Descriptor Table. To be honest I got really confused
+with this one and patched this wrongly. I had to the solutions to see if I'm
+understanding this correctly.
+4. VM check using the 'in' operand.
+5. SetLastError->OutputDebugString->GetLastError debugger check. This is also
+another confusing one. I wasn't sure if the behavior is as intended.
+6. Count 0xCCs as debugger check. CC is the operand for Int 3, which is a very
+common way for debuggers to trigger breakpoints.
+7. Check the PEB structure for NtGlobalStatus to detect debugger.
+8. Check if the day is Friday.
+9. Check if the Exe name is 'backdoge.exe'. This is also a confusing one,
+because it checks 'backdoge.exe' against the command line that I observed
+always include the full path. So technically I don't see how this check will
+ever pass without patching the EXE.
+10. Check if www.dogecoin.com can be resolved, effectively checking if the VM or
+machine is connected to the Internet.
+11. Check if the hour is 5pm.
+12. Not really a check, but simply Xor-ing the byte string with the command line
+string. This should be the string 'backdoge.exe' instead of the command line,
+taking the cue from check #9. I modified the offsets during debugging to pass
+this check.
+13. Resolve the IP address of e.root-servers.net and xor-ing the data with it.
+Also effectively checking if the VM/machine have Internet access.
+14. Connect to Fireeye's tweet, downloads the page, and search for 'Secluded
+Hi', which is part of the string 'Secluded HijackRAT'. Then uses 'jackRAT' to 
+Xor against the byte string. In my debugging sessions this always fail because 
+the page detects that Javascript is not enabled, hence getting a error page. But
+opening the page in a proper browser reveals the string. So I patched in memory 
+with the string to force a passed check here.
+15. Gets 2nd and 3rd command line argument and patch into the byte string. Based
+on the position of where the patching is done, we know that the arguments should
+be MZ and PE, i.e. the typical PE header.
+Some solutions involved writing Python or Powershell scripts to brute force the
+correct flow. I did write a Python script to test the different combinations
+of the flow (challenge7a.py). The solutions were a brute forcer but I didn't go
+that far.
+
+After we get the EXE file, it shows a picture but no email address. We can
+quickly see that this is a .NET assembly so load up the file in dnSpy. The form
+displaying this can be found rather quickly. I realize that the labels on the
+form don't add up. So I guess this must be the missing email address. The string
+is encoded and the decoding algorithm can be found in the lulz class (also xors
+exactly the same way the EXE was encoded in the challenge exe, but with
+different xor strings). I wrote the decoder in Python (challenge7b.py) to get
+the email address from the encoded string 'da7.f1are.finish.lin3@flare-on.com'
+from the main form. In the lulz class there were other strings that were decoded
+but it didn't mean anything. There was another email address but from reading 
+the solutions, that email address is a bogus one.
